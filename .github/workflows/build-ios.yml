@@ -38,9 +38,11 @@ jobs:
         run: |
           cd "$PROJECT_ROOT"
           bash Scripts/package_ipa.sh
-          cp build/ipa/CBrainIOS.ipa "$GITHUB_WORKSPACE/CBrainIOS.ipa"
+          mkdir -p "$GITHUB_WORKSPACE/installables"
+          cp build/ipa/CBrainIOS.ipa "$GITHUB_WORKSPACE/installables/CBrainIOS.ipa"
+          cp build/ipa/CBrainIOS.tipa "$GITHUB_WORKSPACE/installables/CBrainIOS.tipa"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CBrainIOS-ipa
-          path: CBrainIOS.ipa
+          name: UNZIP-FIRST-CBrainIOS-installables
+          path: installables/*

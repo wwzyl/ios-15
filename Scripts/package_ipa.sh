@@ -7,6 +7,7 @@ DERIVED_DATA="${BUILD_DIR}/DerivedData"
 IPA_DIR="${BUILD_DIR}/ipa"
 APP_PATH="${DERIVED_DATA}/Build/Products/Release-iphoneos/CBrainIOS.app"
 IPA_PATH="${IPA_DIR}/CBrainIOS.ipa"
+TIPA_PATH="${IPA_DIR}/CBrainIOS.tipa"
 LOG_PATH="${BUILD_DIR}/xcodebuild.log"
 
 rm -rf "${BUILD_DIR}"
@@ -36,4 +37,10 @@ cp -R "${APP_PATH}" "${WORK_DIR}/Payload/"
   /usr/bin/zip -qry "${IPA_PATH}" Payload
 )
 
+cp "${IPA_PATH}" "${TIPA_PATH}"
+
+/usr/bin/unzip -l "${IPA_PATH}" | grep -q "Payload/CBrainIOS.app/Info.plist"
+/usr/bin/unzip -l "${IPA_PATH}" | grep -q "Payload/CBrainIOS.app/CBrainIOS"
+
 echo "${IPA_PATH}"
+echo "${TIPA_PATH}"
