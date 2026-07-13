@@ -93,7 +93,7 @@ final class WhiteboardRepository {
         var seen = Set<String>()
 
         for drawing in allDrawings() where drawing.nodeId == nodeId {
-            appendUnique("鏈韩涓虹櫧鏉?, to: &parts, seen: &seen)
+            appendUnique("本身为白板", to: &parts, seen: &seen)
         }
 
         for drawing in allDrawings() {
@@ -101,7 +101,7 @@ final class WhiteboardRepository {
             guard let canvas = try? readCanvas(drawing),
                   let elements = canvas["elements"] as? [[String: Any]] else { continue }
             if elements.contains(where: { wbString($0["nodeId"]) == nodeId }) {
-                appendUnique("\(drawing.topic)(鐧芥澘)", to: &parts, seen: &seen)
+                appendUnique("\(drawing.topic)(白板)", to: &parts, seen: &seen)
             }
         }
         return parts.joined(separator: ", ")
