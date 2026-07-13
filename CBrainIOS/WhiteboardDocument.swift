@@ -8,6 +8,12 @@ let nodeTextPaddingX: CGFloat = 10
 let textRawField = "cbrainWhiteboardRawText"
 let lineLabelField = "cbrainLineLabelFor"
 
+enum WhiteboardResizeHandle {
+    case bottomRight
+    case right
+    case left
+}
+
 final class WhiteboardDocument: ObservableObject {
     @Published var document: [String: Any]
     @Published var selectedIds = Set<String>()
@@ -257,15 +263,16 @@ final class WhiteboardDocument: ObservableObject {
     }
 
     func fitTextElement(_ element: inout [String: Any], text: String, allowGrowWidth: Bool) {
-        let normalized = normalizeText(text)
-        element["text"] = normalized
-        if wbString(element[textRawField]).isEmpty {
-            element[textRawField] = text
-        }
+        let raw = normalizeText(text)
+        rememberRawText(&element, raw)
+        var width = wbCGFloat(element["width"], defaultValue: defaultTextWidth)
         if allowGrowWidth {
-            element["width"] = measuredTextWidth(element, text: normalized)
+            width = min(defaultTextWidth, max(36, measureLongestLine(raw, fontSize: textFontSize(element)) + 12))
+            element["width"] = width
         }
-        element["height"] = measuredTextHeight(element, text: normalized)
+        let wrapped = wrapTextForWidth(raw, fontSize: textFontSize(element), width: width)
+        element["text"] = wrapped
+        element["height"] = measuredTextHeight(element, text: wrapped)
     }
 
     func normalizeText(_ text: String) -> String {
@@ -274,7 +281,34 @@ final class WhiteboardDocument: ObservableObject {
 
     func rawTextForLayout(_ element: [String: Any]) -> String {
         let raw = wbString(element[textRawField])
-        return raw.isEmpty ? wbString(element["text"]) : raw
+        return normalizeText(raw.isEmpty ? wbString(element["text"]) : raw)
+    }
+
+    func rememberRawText(_ element: inout [String: Any], _ raw: String) {
+        element[textRawField] = normalizeText(raw)
+    }
+
+    func wrapTextForWidth(_ text: String, fontSize: CGFloat, width: CGFloat) -> String {
+        let maxWidth = max(20, width)
+        let paragraphs = normalizeText(text).components(separatedBy: "\n")
+        var output: [String] = []
+        for paragraph in paragraphs {
+            if paragraph.isEmpty {
+                output.append("")
+                continue
+            }
+            var line = ""
+            for character in paragraph {
+                let candidate = line + String(character)
+                if !line.isEmpty && measureText(candidate, fontSize: fontSize) > maxWidth {
+                    output.append(line)
+                    line = ""
+                }
+                line.append(character)
+            }
+            output.append(line)
+        }
+        return output.joined(separator: "\n")
     }
 
     func measuredTextWidth(_ element: [String: Any], text: String) -> CGFloat {
@@ -346,12 +380,11 @@ final class WhiteboardDocument: ObservableObject {
         updateBoundConnectors()
     }
 
-    func resizeElement(id: String, to point: CGPoint) {
+    func resizeElement(id: String, to point: CGPoint, handle: WhiteboardResizeHandle = .bottomRight, delta: CGSize = .zero) {
         var list = elements()
         guard let index = list.firstIndex(where: { wbString($0["elementId"]) == id }) else { return }
         if wbString(list[index]["type"]) == "text" {
-            list[index]["width"] = max(40, point.x - wbCGFloat(list[index]["x"]))
-            list[index]["height"] = max(24, point.y - wbCGFloat(list[index]["y"]))
+            resizeTextElement(&list[index], handle: handle, delta: delta)
         } else {
             list[index]["width"] = max(20, point.x - wbCGFloat(list[index]["x"]))
             list[index]["height"] = max(20, point.y - wbCGFloat(list[index]["y"]))
@@ -360,6 +393,54 @@ final class WhiteboardDocument: ObservableObject {
         setElements(list)
         syncGroupText(shapeId: changedId)
         updateBoundConnectors()
+    }
+
+    func resizeTextElement(_ element: inout [String: Any], handle: WhiteboardResizeHandle, delta: CGSize) {
+        switch handle {
+        case .left:
+            resizeTextWidth(&element, widthDelta: -delta.width, moveLeftEdge: true)
+        case .right:
+            resizeTextWidth(&element, widthDelta: delta.width, moveLeftEdge: false)
+        case .bottomRight:
+            resizeTextFont(&element, dx: delta.width, dy: delta.height)
+        }
+    }
+
+    func resizeTextWidth(_ element: inout [String: Any], widthDelta: CGFloat, moveLeftEdge: Bool) {
+        let oldX = wbCGFloat(element["x"])
+        let oldWidth = max(30, wbCGFloat(element["width"], defaultValue: defaultTextWidth))
+        let newWidth = max(30, oldWidth + widthDelta)
+        if moveLeftEdge {
+            element["x"] = oldX + oldWidth - newWidth
+        }
+        element["width"] = newWidth
+        let raw = rawTextForLayout(element)
+        rememberRawText(&element, raw)
+        let wrapped = wrapTextForWidth(raw, fontSize: textFontSize(element), width: newWidth)
+        element["text"] = wrapped
+        element["height"] = measuredTextHeight(element, text: wrapped)
+    }
+
+    func resizeTextFont(_ element: inout [String: Any], dx: CGFloat, dy: CGFloat) {
+        var style = wbDict(element["style"])
+        if style.isEmpty {
+            style = baseStyle(stroke: "", fill: "#000000", lineWidth: "small")
+        }
+        style["lineHeightRatio"] = wbCGFloat(style["lineHeightRatio"], defaultValue: 1.15)
+        let oldFontSize = max(8, wbCGFloat(style["fontSize"], defaultValue: freeTextFontSize))
+        var newFontSize = oldFontSize + round((dx + dy) * 0.45)
+        newFontSize = max(8, min(80, newFontSize))
+        if newFontSize == oldFontSize && abs(dx) + abs(dy) >= 1 {
+            newFontSize = max(8, min(80, oldFontSize + (dx + dy >= 0 ? 1 : -1)))
+        }
+        style["fontSize"] = newFontSize
+        element["style"] = style
+        let raw = rawTextForLayout(element)
+        rememberRawText(&element, raw)
+        let wrapped = wrapTextForWidth(raw, fontSize: newFontSize, width: measuredTextWidth(element, text: raw))
+        element["text"] = wrapped
+        element["width"] = measuredTextWidth(element, text: wrapped)
+        element["height"] = measuredTextHeight(element, text: wrapped)
     }
 
     func deleteSelection() {

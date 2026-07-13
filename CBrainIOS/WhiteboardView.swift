@@ -42,7 +42,7 @@ struct WhiteboardView: View {
             if !canvasOnly {
                 Divider()
                 bottomPanel
-                    .frame(height: 260)
+                    .frame(height: 320)
             }
 
             Text(board.status.isEmpty ? model.whiteboardStatus : board.status)
@@ -142,7 +142,8 @@ struct WhiteboardView: View {
                     }
                 } label: {
                     Label("元素", systemImage: "ellipsis.circle")
-                        .labelStyle(.iconOnly)
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -170,7 +171,7 @@ struct WhiteboardView: View {
                 }
                 .padding(8)
             }
-            .frame(maxWidth: 210)
+            .frame(minWidth: 96, idealWidth: 140, maxWidth: 170)
             Divider()
             VStack(spacing: 6) {
                 Text(model.selectedNode?.topic ?? "")
@@ -225,14 +226,22 @@ struct WhiteboardView: View {
     private func toolButton(_ title: String, _ systemImage: String, mode: String) -> some View {
         Button {
             board.mode = mode
+            board.status = "Mode: \(mode)"
         } label: {
             Label(title, systemImage: systemImage)
                 .labelStyle(.titleAndIcon)
                 .font(.caption)
+                .lineLimit(1)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.bordered)
         .controlSize(.small)
-        .tint(board.mode == mode ? .accentColor : .gray)
+        .foregroundStyle(board.mode == mode ? Color.accentColor : Color.primary)
+        .background(board.mode == mode ? Color.accentColor.opacity(0.18) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(board.mode == mode ? Color.accentColor : Color.clear, lineWidth: 1.5)
+        }
     }
 
     private func save(showStatus: Bool) {
@@ -333,6 +342,7 @@ private final class WhiteboardCanvasUIView: UIView {
     private var resizing = false
     private var endpointDrag = false
     private var endpointIndex = 0
+    private var resizeHandle: WhiteboardResizeHandle = .bottomRight
     private var marquee = false
     private var marqueeRect = CGRect.zero
     private var lastTap = Date.distantPast
@@ -383,6 +393,7 @@ private final class WhiteboardCanvasUIView: UIView {
         drawingId = ""
         dragging = false
         resizing = false
+        resizeHandle = .bottomRight
         endpointDrag = false
         marquee = false
 
@@ -421,7 +432,8 @@ private final class WhiteboardCanvasUIView: UIView {
             return
         }
 
-        if let hit = board.hit(world) {
+        let selectedHandleHit = selectedResizeHandleHit(world, board: board)
+        if let hit = selectedHandleHit ?? board.hit(world) {
             activeId = hit
             if !board.selectedIds.contains(hit) {
                 board.selectElementWithGroup(id: hit)
@@ -440,10 +452,10 @@ private final class WhiteboardCanvasUIView: UIView {
                     dragging = true
                 }
             } else if let element = board.element(id: hit) {
-                let rect = board.bounds(element)
-                let handle = CGRect(x: rect.maxX - 18, y: rect.maxY - 18, width: 24, height: 24)
-                resizing = handle.contains(world)
-                if !resizing {
+                if let handle = resizeHandleHit(element, point: world, board: board) {
+                    resizing = true
+                    resizeHandle = handle
+                } else {
                     dragging = true
                 }
             }
@@ -463,6 +475,8 @@ private final class WhiteboardCanvasUIView: UIView {
         guard let touch = touches.first, let board else { return }
         let screen = touch.location(in: self)
         let world = board.screenToWorld(screen)
+        let dx = (screen.x - lastScreen.x) / board.scale
+        let dy = (screen.y - lastScreen.y) / board.scale
         if !drawingId.isEmpty {
             board.updateElement(id: drawingId) { element in
                 if board.isConnector(element) {
@@ -484,10 +498,8 @@ private final class WhiteboardCanvasUIView: UIView {
             }
             board.updateBoundConnectors()
         } else if resizing, !activeId.isEmpty {
-            board.resizeElement(id: activeId, to: world)
+            board.resizeElement(id: activeId, to: world, handle: resizeHandle, delta: CGSize(width: dx, height: dy))
         } else if dragging {
-            let dx = (screen.x - lastScreen.x) / board.scale
-            let dy = (screen.y - lastScreen.y) / board.scale
             board.moveSelection(dx: dx, dy: dy)
         } else if marquee {
             marqueeRect = CGRect(x: min(downWorld.x, world.x), y: min(downWorld.y, world.y), width: abs(world.x - downWorld.x), height: abs(world.y - downWorld.y))
@@ -511,6 +523,7 @@ private final class WhiteboardCanvasUIView: UIView {
         }
         dragging = false
         resizing = false
+        resizeHandle = .bottomRight
         endpointDrag = false
         marquee = false
         activeId = ""
@@ -554,6 +567,50 @@ private final class WhiteboardCanvasUIView: UIView {
     @objc private func pasteElement() { board?.pasteAtCenter(); setNeedsDisplay() }
     @objc private func groupElement() { board?.groupSelection(); setNeedsDisplay() }
     @objc private func ungroupElement() { board?.ungroupSelection(); setNeedsDisplay() }
+    @objc private func colorBlack() { applyTextColor("#000000") }
+    @objc private func colorRed() { applyTextColor("#DC2626") }
+    @objc private func colorBlue() { applyTextColor("#2563EB") }
+    @objc private func colorGreen() { applyTextColor("#16A34A") }
+    @objc private func colorOrange() { applyTextColor("#F97316") }
+    @objc private func colorPurple() { applyTextColor("#7C3AED") }
+
+    private func applyTextColor(_ value: String) {
+        board?.changeSelectedTextColor(value)
+        setNeedsDisplay()
+    }
+
+    private func selectedResizeHandleHit(_ point: CGPoint, board: WhiteboardDocument) -> String? {
+        for element in board.elements().reversed() where board.selectedIds.contains(wbString(element["elementId"])) {
+            if resizeHandleHit(element, point: point, board: board) != nil {
+                return wbString(element["elementId"])
+            }
+        }
+        return nil
+    }
+
+    private func resizeHandleHit(_ element: [String: Any], point: CGPoint, board: WhiteboardDocument) -> WhiteboardResizeHandle? {
+        guard !board.isConnector(element) else { return nil }
+        let rect = board.bounds(element)
+        let hitSize = 28 / max(0.35, board.scale)
+        if abs(point.x - rect.maxX) <= hitSize && abs(point.y - rect.maxY) <= hitSize {
+            return .bottomRight
+        }
+        if wbString(element["type"]) == "text" {
+            var edgeTop = rect.minY + min(hitSize * 2, rect.height / 3)
+            var edgeBottom = rect.maxY - min(hitSize * 2, rect.height / 3)
+            if edgeBottom < edgeTop {
+                edgeTop = rect.minY
+                edgeBottom = rect.maxY
+            }
+            if point.y >= edgeTop && point.y <= edgeBottom && abs(point.x - rect.maxX) <= hitSize {
+                return .right
+            }
+            if point.y >= edgeTop && point.y <= edgeBottom && abs(point.x - rect.minX) <= hitSize {
+                return .left
+            }
+        }
+        return nil
+    }
 
     private func startInlineEdit(id: String, point: CGPoint) {
         guard let board, let element = board.element(id: id) else { return }
@@ -685,9 +742,18 @@ private final class WhiteboardCanvasUIView: UIView {
                 ? board.bounds(element).insetBy(dx: -8, dy: -8)
                 : board.bounds(element)
             context.stroke(rect)
-            let handle = CGRect(x: rect.maxX - 7, y: rect.maxY - 7, width: 14, height: 14)
             UIColor.systemBlue.setFill()
-            context.fill(handle)
+            context.fill(CGRect(x: rect.maxX - 8, y: rect.maxY - 8, width: 16, height: 16))
+            if wbString(element["type"]) == "text" {
+                context.fill(CGRect(x: rect.minX - 4, y: rect.midY - 14, width: 8, height: 28))
+                context.fill(CGRect(x: rect.maxX - 4, y: rect.midY - 14, width: 8, height: 28))
+            }
+            if board.isConnector(element) {
+                let a = board.connectorPoint(element, index: 0)
+                let b = board.connectorPoint(element, index: 1)
+                context.fillEllipse(in: CGRect(x: a.x - 8, y: a.y - 8, width: 16, height: 16))
+                context.fillEllipse(in: CGRect(x: b.x - 8, y: b.y - 8, width: 16, height: 16))
+            }
         }
     }
 }

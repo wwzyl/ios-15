@@ -162,11 +162,12 @@ struct ContentView: View {
                 .environmentObject(model)
             }
         }
-        .sheet(item: $whiteboardStart) { start in
+        .fullScreenCover(item: $whiteboardStart) { start in
             NavigationStack {
                 WhiteboardView(start: start)
                     .environmentObject(model)
             }
+            .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingSearchSheet) {
             NavigationStack {
@@ -312,8 +313,9 @@ struct ContentView: View {
     private func compactButton(_ title: String, _ systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.caption)
+                .font(.caption2)
                 .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -510,7 +512,7 @@ struct ContentView: View {
                         Text("预览").tag(true)
                     }
                     .pickerStyle(.segmented)
-                    .frame(maxWidth: 180)
+                    .frame(maxWidth: 128)
 
                     Button {
                         showingFullEditor = true
@@ -528,19 +530,28 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))
                     .overlay(alignment: .top) {
                         Divider()
+                    }
+                    .onTapGesture(count: 2) {
+                        showingFullEditor = true
                     }
                 } else {
                     MarkdownEditor(text: $model.noteText, command: editorCommand, selectedText: $selectedNoteText)
                         .background(Color(.systemBackground))
                         .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay(alignment: .top) {
                             Divider()
                         }
+                        .onTapGesture(count: 2) {
+                            showingFullEditor = true
+                        }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.systemGroupedBackground))
         } else {
             VStack(spacing: 14) {
