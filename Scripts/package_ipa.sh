@@ -36,4 +36,3 @@ cp -R "${APP_PATH}" "${WORK_DIR}/Payload/"
 )
 
 echo "${IPA_PATH}"
-

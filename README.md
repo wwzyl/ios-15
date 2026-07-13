@@ -1,69 +1,47 @@
 # CBrain iOS
 
-这是从 `cbrain-android` 重新整理出来的 iOS 原生 SwiftUI 工程。它不是 APK 转换产物，而是兼容原 CBrain 知识库目录格式的 iOS 版本。
+这是 CBrain 的 iOS 原生 SwiftUI 工程。GitHub 网页端不能直接上传文件夹时，推荐使用源码 zip 输入、Actions artifact 输出的构建方式。
 
-当前第一版已包含：
+## GitHub 网页端构建
 
-- 导入包含 `graph.json` 和 `notes` 的 CBrain 知识库文件夹
-- 浏览节点、父节点、子节点、相关节点
-- 搜索标题和笔记正文
-- 编辑并保存 `notes/*.md`
-- 新增父节点、子节点、相关节点
-- 节点改名、软删除
-- 写入 `modifys/modify_yyyy-MM-dd.json`
-- S3 双向同步、配置检查、从 S3 全量下载
-- `.cbrain-sync/manifest.json`、远端锁、冲突文件处理
-- GitHub Actions 云端构建 IPA
+1. 在电脑上压缩整个源码文件夹。
+2. 建议把压缩包命名为 `cbrain-ios-source.zip`。
+3. 也可以使用 `cbrain ios.zip`，workflow 会自动识别。
+4. 把这个源码 zip 上传到 GitHub 仓库根目录。
+5. 打开 `Actions`，运行 `Build iOS IPA`。
+6. 下载 artifact：`UNZIP-FIRST-CBrainIOS-installables`。
+7. 先解压 GitHub 下载下来的 artifact zip。
+8. 用 TrollStore 安装解压后里面的 `CBrainIOS.tipa`。
 
-暂未完成：
+不要安装这些文件：
 
-- iOS App 图标
-- 真机 UI 细节测试
+- 源码 zip，例如 `cbrain-ios-source.zip` 或 `cbrain ios.zip`
+- GitHub 下载下来的 artifact 外层 zip
+- 解压出来的 `Payload` 文件夹
+- 旧的本地 `CBrainIOS.ipa` 或 `CBrainIOS.tipa`
 
-## 在 GitHub 生成 IPA
-
-1. 新建一个 GitHub 仓库。
-2. 把本文件夹里的所有内容推送到仓库根目录。
-3. 打开仓库的 `Actions`。
-4. 运行 `Build iOS IPA`。
-5. 下载 artifact：`CBrainIOS-ipa`。
-
-产物路径：
+workflow 上传前会验证安装包里有这些路径：
 
 ```text
-CBrainIOS.ipa
+Payload/CBrainIOS.app/Info.plist
+Payload/CBrainIOS.app/CBrainIOS
+Payload/CBrainIOS.app/_CodeSignature/CodeResources
 ```
 
-这个 IPA 是未签名/免上架用途，适合后续交给 TrollStore 安装测试。
-
-## 本地 Mac 构建
-
-如果之后能使用 Mac：
-
-```bash
-bash Scripts/package_ipa.sh
-```
-
-生成位置：
-
-```text
-build/ipa/CBrainIOS.ipa
-```
+如果这些路径缺失，构建会失败，而不是上传一个 TrollStore 解析不了的包。
 
 ## 知识库格式
 
-选择的文件夹需要直接包含：
+选择的知识库文件夹需要直接包含：
 
 - `graph.json`
 - `notes`
 - 可选：`modifys` 或 `modifys.json`
 
-iOS 版会把选中的知识库复制到 App 的 Documents 目录下：
+iOS 版会把选中的知识库复制到 App 的 Documents 目录：
 
 ```text
 CBrain Library
 ```
 
-编辑保存会写入这份 App 内部副本。
-
-从 S3 全量下载时，也会写入同一个 App 内部目录。
+编辑保存会写入这个 App 内部副本。从 S3 全量下载时，也会写入同一个 App 内部目录。

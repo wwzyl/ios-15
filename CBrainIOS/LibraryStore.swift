@@ -98,6 +98,12 @@ final class LibraryStore {
         try? FileManager.default.removeItem(at: url(relativePath))
     }
 
+    func deleteMarkdownAliases(_ relativePath: String) {
+        for alias in markdownAliases(relativePath) {
+            try? FileManager.default.removeItem(at: alias)
+        }
+    }
+
     func exists(_ relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: url(relativePath).path)
     }

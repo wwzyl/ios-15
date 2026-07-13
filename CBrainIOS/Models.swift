@@ -24,10 +24,14 @@ struct CBrainLink: Identifiable {
 }
 
 struct CBrainSearchResult: Identifiable {
-    var id: String { nodeId }
+    var id: String { "\(kind):\(nodeId):\(drawingId):\(elementId):\(elementIndex)" }
     var nodeId: String
     var title: String
     var reason: String
+    var kind: String = "note"
+    var drawingId: String = ""
+    var elementId: String = ""
+    var elementIndex: Int = -1
 }
 
 struct CBrainFileRecord {

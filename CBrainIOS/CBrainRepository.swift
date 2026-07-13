@@ -77,6 +77,18 @@ final class CBrainRepository {
         return nodesByIds(ids)
     }
 
+    func siblings(of id: String) -> [CBrainNode] {
+        var output: [CBrainNode] = []
+        var seen = Set<String>()
+        for parent in parents(of: id) {
+            for child in children(of: parent.id) where child.id != id && !seen.contains(child.id) {
+                seen.insert(child.id)
+                output.append(child)
+            }
+        }
+        return output
+    }
+
     func readNote(_ node: CBrainNode) throws -> String {
         try store.readMarkdownText(notePath(node))
     }
@@ -90,6 +102,13 @@ final class CBrainRepository {
         nodes[node.id] = raw
         try appendModify(nodeId: node.id, nodeName: node.topic, type: "1", table: "cbNode", key: "note", value: note, comment: "修改节点笔记", time: now)
         try saveGraph()
+    }
+
+    func deleteNoteFile(_ node: CBrainNode) {
+        let path = notePath(node)
+        store.delete(path)
+        store.deleteMarkdownAliases(path)
+        noteSearchCache.removeValue(forKey: Self.safeFileName(node.fileName))
     }
 
     func addChild(parentId: String, title: String) throws -> CBrainNode {
@@ -276,6 +295,10 @@ final class CBrainRepository {
             .compactMap { nodeByFileName(Self.stripMarkdownExtension($0)) }
             .filter { $0.isActive && $0.id != currentNodeId }
         return nodesWithNotes.randomElement()
+    }
+
+    func nodeByMarkdownFile(_ fileName: String) -> CBrainNode? {
+        nodeByFileName(Self.stripMarkdownExtension(fileName))
     }
 
     private func rawNode(_ id: String) throws -> [String: Any] {

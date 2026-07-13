@@ -17,6 +17,10 @@
 		A10000000000000000000108 /* S3Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000208 /* S3Config.swift */; };
 		A10000000000000000000109 /* S3StorageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000210 /* S3StorageClient.swift */; };
 		A10000000000000000000110 /* CBrainSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000211 /* CBrainSyncService.swift */; };
+		A10000000000000000000111 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000212 /* Assets.xcassets */; };
+		A10000000000000000000112 /* WhiteboardRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000213 /* WhiteboardRepository.swift */; };
+		A10000000000000000000113 /* WhiteboardDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000214 /* WhiteboardDocument.swift */; };
+		A10000000000000000000114 /* WhiteboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000215 /* WhiteboardView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +36,10 @@
 		A10000000000000000000209 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000210 /* S3StorageClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = S3StorageClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000211 /* CBrainSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CBrainSyncService.swift; sourceTree = "<group>"; };
+		A10000000000000000000212 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A10000000000000000000213 /* WhiteboardRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteboardRepository.swift; sourceTree = "<group>"; };
+		A10000000000000000000214 /* WhiteboardDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteboardDocument.swift; sourceTree = "<group>"; };
+		A10000000000000000000215 /* WhiteboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhiteboardView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +74,10 @@
 				A10000000000000000000208 /* S3Config.swift */,
 				A10000000000000000000210 /* S3StorageClient.swift */,
 				A10000000000000000000211 /* CBrainSyncService.swift */,
+				A10000000000000000000213 /* WhiteboardRepository.swift */,
+				A10000000000000000000214 /* WhiteboardDocument.swift */,
+				A10000000000000000000215 /* WhiteboardView.swift */,
+				A10000000000000000000212 /* Assets.xcassets */,
 				A10000000000000000000209 /* Info.plist */,
 			);
 			path = CBrainIOS;
@@ -138,6 +150,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000111 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -158,6 +171,9 @@
 				A10000000000000000000108 /* S3Config.swift in Sources */,
 				A10000000000000000000109 /* S3StorageClient.swift in Sources */,
 				A10000000000000000000110 /* CBrainSyncService.swift in Sources */,
+				A10000000000000000000112 /* WhiteboardRepository.swift in Sources */,
+				A10000000000000000000113 /* WhiteboardDocument.swift in Sources */,
+				A10000000000000000000114 /* WhiteboardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,6 +299,7 @@
 		A10000000000000000000021 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
 				DEVELOPMENT_TEAM = "";
@@ -306,6 +323,7 @@
 		A10000000000000000000022 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
 				DEVELOPMENT_TEAM = "";

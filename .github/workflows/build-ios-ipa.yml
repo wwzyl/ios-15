@@ -1,0 +1,19 @@
+name: Build iOS IPA Direct
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build IPA
+        run: |
+          bash Scripts/package_ipa.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CBrainIOS-ipa
+          path: build/ipa/CBrainIOS.ipa

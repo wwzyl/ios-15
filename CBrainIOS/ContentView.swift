@@ -2,32 +2,46 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var model: CBrainViewModel
     @State private var showingFolderPicker = false
+    @State private var showingSidebarSheet = false
     @State private var showingS3Settings = false
     @State private var pendingAction: NodeAction?
     @State private var inputText = ""
     @State private var confirmDelete = false
-    @State private var existingLinkAction: ExistingLinkAction?
+    @State private var addRelationAction: ExistingLinkAction?
     @State private var previewMode = false
     @State private var editorCommand: EditorWrapCommand?
     @State private var showingFullEditor = false
     @State private var fullEditorCommand: EditorWrapCommand?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var whiteboardStart: WhiteboardStart?
+    @State private var selectedNoteText = ""
+    @State private var showingSearchSheet = false
 
     var body: some View {
-        NavigationSplitView {
+        Group {
+            if horizontalSizeClass == .compact {
+                NavigationStack {
+                    compactDetail
+                }
+            } else {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationTitle("CBrain")
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarLeading) {
                         Button {
                             model.openHistory(-1)
+                            closeSidebar()
                         } label: {
                             Label("上", systemImage: "chevron.left")
                         }
 
                         Button {
                             model.openHistory(1)
+                            closeSidebar()
                         } label: {
                             Label("下", systemImage: "chevron.right")
                         }
@@ -35,21 +49,9 @@ struct ContentView: View {
 
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Button {
-                            model.homeNode()
-                        } label: {
-                            Label("主页", systemImage: "house")
-                        }
-
-                        Button {
                             showingFolderPicker = true
                         } label: {
                             Label("导入", systemImage: "folder.badge.plus")
-                        }
-
-                        Button {
-                            model.openRandomNote()
-                        } label: {
-                            Label("随机", systemImage: "shuffle")
                         }
                     }
                 }
@@ -58,47 +60,22 @@ struct ContentView: View {
                 .navigationTitle(model.selectedNode?.topic ?? "CBrain")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    ToolbarItemGroup(placement: .navigationBarLeading) {
                         Button {
-                            model.saveCurrentNote()
+                            toggleSidebar()
                         } label: {
-                            Label("保存", systemImage: "square.and.arrow.down")
+                            Label("资料库", systemImage: "sidebar.left")
                         }
-                        .disabled(model.selectedNode == nil || !model.noteDirty)
 
+                        Button {
+                            model.homeNode()
+                        } label: {
+                            Label("主页", systemImage: "house")
+                        }
+                    }
+
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Menu {
-                            Button {
-                                begin(.child)
-                            } label: {
-                                Label("子节点", systemImage: "arrow.down.right")
-                            }
-                            Button {
-                                begin(.parent)
-                            } label: {
-                                Label("父节点", systemImage: "arrow.up.left")
-                            }
-                            Button {
-                                begin(.related)
-                            } label: {
-                                Label("相关节点", systemImage: "link")
-                            }
-                            Divider()
-                            Button {
-                                existingLinkAction = .parent
-                            } label: {
-                                Label("链接已有父节点", systemImage: "arrow.up.left.and.arrow.down.right")
-                            }
-                            Button {
-                                existingLinkAction = .child
-                            } label: {
-                                Label("链接已有子节点", systemImage: "arrow.down.right.and.arrow.up.left")
-                            }
-                            Button {
-                                existingLinkAction = .related
-                            } label: {
-                                Label("链接已有相关节点", systemImage: "link.badge.plus")
-                            }
-                            Divider()
                             Button {
                                 begin(.rename)
                             } label: {
@@ -123,6 +100,38 @@ struct ContentView: View {
                     }
                 }
         }
+                .navigationSplitViewStyle(.balanced)
+            }
+        }
+        .onAppear {
+            preferDetailColumn()
+        }
+        .onChange(of: horizontalSizeClass) { _ in
+            preferDetailColumn()
+        }
+        .sheet(isPresented: $showingSidebarSheet) {
+            NavigationStack {
+                sidebar
+                    .navigationTitle("CBrain")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("关闭") {
+                                showingSidebarSheet = false
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button {
+                                showingSidebarSheet = false
+                                DispatchQueue.main.async {
+                                    showingFolderPicker = true
+                                }
+                            } label: {
+                                Label("导入", systemImage: "folder.badge.plus")
+                            }
+                        }
+                    }
+            }
+        }
         .sheet(isPresented: $showingFolderPicker) {
             FolderPicker { url in
                 showingFolderPicker = false
@@ -134,13 +143,37 @@ struct ContentView: View {
                 S3SettingsView()
             }
         }
-        .sheet(item: $existingLinkAction) { action in
+        .sheet(item: $addRelationAction) { action in
             NavigationStack {
-                ExistingLinkPicker(action: action) { node in
-                    existingLinkAction = nil
+                RelationAddPicker(action: action) { node in
+                    addRelationAction = nil
                     model.linkExisting(node, as: action)
+                } onCreate: { title in
+                    addRelationAction = nil
+                    switch action {
+                    case .parent:
+                        model.addParent(title: title)
+                    case .child:
+                        model.addChild(title: title)
+                    case .related:
+                        model.addRelated(title: title)
+                    }
                 }
                 .environmentObject(model)
+            }
+        }
+        .sheet(item: $whiteboardStart) { start in
+            NavigationStack {
+                WhiteboardView(start: start)
+                    .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $showingSearchSheet) {
+            NavigationStack {
+                SearchResultsSheet { result in
+                    openSearchResult(result)
+                }
+                    .environmentObject(model)
             }
         }
         .alert(pendingAction?.title ?? "", isPresented: actionBinding) {
@@ -168,39 +201,142 @@ struct ContentView: View {
         }
         .fullScreenCover(isPresented: $showingFullEditor) {
             NavigationStack {
-                VStack(spacing: 0) {
-                    MarkdownEditor(text: $model.noteText, command: fullEditorCommand)
-                        .padding(12)
-                }
-                .navigationTitle(model.selectedNode?.topic ?? "编辑")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarLeading) {
-                        Button {
-                            fullEditorCommand = EditorWrapCommand(before: "**", after: "**")
-                        } label: {
-                            Label("加粗", systemImage: "bold")
-                        }
-                        Button {
-                            fullEditorCommand = EditorWrapCommand(before: "==", after: "==")
-                        } label: {
-                            Label("高亮", systemImage: "highlighter")
-                        }
-                    }
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Button {
-                            model.saveCurrentNote()
-                        } label: {
-                            Label("保存", systemImage: "square.and.arrow.down")
-                        }
-                        .disabled(!model.noteDirty)
+                MarkdownEditor(text: $model.noteText, command: fullEditorCommand, selectedText: $selectedNoteText)
+                    .padding(12)
+                    .navigationTitle(model.selectedNode?.topic ?? "编辑")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .navigationBarLeading) {
+                            Button {
+                                model.saveCurrentNote()
+                            } label: {
+                                Label("保存", systemImage: "checkmark.circle")
+                            }
+                            .disabled(!model.noteDirty)
 
-                        Button("缩小") {
-                            showingFullEditor = false
+                            Button {
+                                fullEditorCommand = EditorWrapCommand(before: "**", after: "**")
+                            } label: {
+                                Label("加粗", systemImage: "bold")
+                            }
+                            Button {
+                                fullEditorCommand = EditorWrapCommand(before: "==", after: "==")
+                            } label: {
+                                Label("高亮", systemImage: "highlighter")
+                            }
+                            Button {
+                                copyReferenceLink()
+                            } label: {
+                                Label("引用", systemImage: "link")
+                            }
+                            .disabled(selectedNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        ToolbarItemGroup(placement: .navigationBarTrailing) {
+                            Button {
+                                showingFullEditor = false
+                            } label: {
+                                Label("缩小", systemImage: "arrow.down.right.and.arrow.up.left")
+                            }
                         }
                     }
+            }
+        }
+    }
+
+    private var compactDetail: some View {
+        detail
+            .navigationTitle(model.selectedNode?.topic ?? "CBrain")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    Button {
+                        toggleSidebar()
+                    } label: {
+                        Label("资料库", systemImage: "sidebar.left")
+                    }
+
+                    Button {
+                        model.homeNode()
+                    } label: {
+                        Label("主页", systemImage: "house")
+                    }
+                }
+
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            begin(.rename)
+                        } label: {
+                            Label("改名", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            confirmDelete = true
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    } label: {
+                        Label("更多", systemImage: "ellipsis.circle")
+                    }
+                    .disabled(model.selectedNode == nil)
+
+                    Button {
+                        showingS3Settings = true
+                    } label: {
+                        Label("同步", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(model.isSyncing)
                 }
             }
+    }
+
+    private func toggleSidebar() {
+        if horizontalSizeClass == .compact {
+            showingSidebarSheet = true
+            return
+        }
+
+        withAnimation {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        }
+    }
+
+    private func preferDetailColumn() {
+        columnVisibility = .detailOnly
+    }
+
+    private func closeSidebar() {
+        showingSidebarSheet = false
+        columnVisibility = .detailOnly
+    }
+
+    private func compactButton(_ title: String, _ systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .lineLimit(1)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+    }
+
+    private func selectFromSidebar(_ node: CBrainNode) {
+        model.selectNode(node, updateGraph: true)
+        closeSidebar()
+    }
+
+    private func openSearchResult(_ result: CBrainSearchResult) {
+        if let node = model.nodes.first(where: { $0.id == result.nodeId }) {
+            selectFromSidebar(node)
+        }
+        guard result.kind == "whiteboard" else { return }
+        do {
+            whiteboardStart = try model.makeWhiteboardStart(
+                drawingId: result.drawingId,
+                focusElementId: result.elementId,
+                focusElementIndex: result.elementIndex
+            )
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -209,21 +345,23 @@ struct ContentView: View {
             Section(model.libraryName) {
                 if model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     ForEach(model.nodes) { node in
-                        NodeRow(node: node, isSelected: node.id == model.selectedNode?.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                model.selectNode(node)
-                            }
+                        Button {
+                            selectFromSidebar(node)
+                        } label: {
+                            NodeRow(node: node, isSelected: node.id == model.selectedNode?.id)
+                        }
                     }
+                } else if model.searchResults.isEmpty {
+                    Text("没有结果")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(model.searchResults) { result in
                         Button {
-                            if let node = model.nodes.first(where: { $0.id == result.nodeId }) {
-                                model.selectNode(node)
-                            }
+                            openSearchResult(result)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(result.title)
+                                Text((result.kind == "whiteboard" ? "[白板] " : "") + result.title)
                                     .font(.body)
                                     .lineLimit(1)
                                 Text(result.reason)
@@ -251,17 +389,93 @@ struct ContentView: View {
     private var detail: some View {
         if let selected = model.selectedNode {
             VStack(alignment: .leading, spacing: 12) {
+                VStack(spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(model.libraryName)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Spacer()
+                        compactButton("主页", "house") {
+                            model.homeNode()
+                        }
+                        compactButton("选择", "folder.badge.plus") {
+                            showingFolderPicker = true
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        compactButton("搜索", "magnifyingglass") {
+                            showingSearchSheet = true
+                        }
+                        compactButton("白板", "square.and.pencil") {
+                            openCurrentWhiteboard()
+                        }
+                        compactButton("+父", "arrow.up.left") {
+                            addRelationAction = .parent
+                        }
+                        compactButton("+子", "arrow.down.right") {
+                            addRelationAction = .child
+                        }
+                        compactButton("+相关", "link") {
+                            addRelationAction = .related
+                        }
+                        Menu {
+                            Button("改名") { begin(.rename) }
+                            Button("删除", role: .destructive) { confirmDelete = true }
+                        } label: {
+                            Label("更多", systemImage: "ellipsis.circle")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    HStack(spacing: 6) {
+                        compactButton("上", "chevron.left") {
+                            model.openHistory(-1)
+                        }
+                        compactButton("随机节点", "shuffle") {
+                            model.openRandomNote()
+                        }
+                        compactButton("S3", "arrow.triangle.2.circlepath") {
+                            showingS3Settings = true
+                        }
+                        compactButton("下", "chevron.right") {
+                            model.openHistory(1)
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color(.systemGroupedBackground))
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text(selected.topic)
                         .font(.title2.weight(.semibold))
                         .lineLimit(2)
-                    RelationStrip(title: "父节点", nodes: model.parents, relation: .parent, onSelect: model.selectNode, onDelete: model.removeRelation)
-                    RelationStrip(title: "子节点", nodes: model.children, relation: .child, onSelect: model.selectNode, onDelete: model.removeRelation)
-                    RelationStrip(title: "相关", nodes: model.related, relation: .related, onSelect: model.selectNode, onDelete: model.removeRelation)
+                    RelationStrip(title: "父节点", nodes: model.parents, relation: .parent, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: model.removeRelation)
+                    RelationStrip(title: "兄弟", nodes: model.siblings, relation: .sibling, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: { _, _ in })
+                    RelationStrip(title: "子节点", nodes: model.children, relation: .child, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: model.removeRelation)
+                    RelationStrip(title: "相关", nodes: model.related, relation: .related, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: model.removeRelation)
+                    if !model.whiteboardStatus.isEmpty {
+                        Text(model.whiteboardStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 .padding([.horizontal, .top], 16)
 
                 HStack(spacing: 8) {
+                    Button {
+                        model.saveCurrentNote()
+                    } label: {
+                        Label("保存", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(model.selectedNode == nil || !model.noteDirty)
+
                     Button {
                         editorCommand = EditorWrapCommand(before: "**", after: "**")
                     } label: {
@@ -279,6 +493,15 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(previewMode)
+
+                    Button {
+                        copyReferenceLink()
+                    } label: {
+                        Label("引用", systemImage: "link")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(selectedNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                     Spacer()
 
@@ -310,7 +533,7 @@ struct ContentView: View {
                         Divider()
                     }
                 } else {
-                    MarkdownEditor(text: $model.noteText, command: editorCommand)
+                    MarkdownEditor(text: $model.noteText, command: editorCommand, selectedText: $selectedNoteText)
                         .background(Color(.systemBackground))
                         .padding(.horizontal, 12)
                         .overlay(alignment: .top) {
@@ -382,6 +605,29 @@ struct ContentView: View {
         pendingAction = nil
     }
 
+    private func openCurrentWhiteboard() {
+        do {
+            whiteboardStart = try model.makeWhiteboardStart()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func copyReferenceLink() {
+        guard let node = model.selectedNode else { return }
+        let text = selectedNoteText
+            .replacingOccurrences(of: "\r\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let escaped = text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
+        UIPasteboard.general.string = "[\(escaped)](https://app.cbrain.site/index?nodeid=\(node.id))"
+        model.status = "已复制引用: \(text)"
+    }
+
     private func tryAttributedMarkdown(_ text: String) -> AttributedString {
         if let attributed = try? AttributedString(markdown: text) {
             return attributed
@@ -399,6 +645,7 @@ private struct EditorWrapCommand: Equatable {
 private struct MarkdownEditor: UIViewRepresentable {
     @Binding var text: String
     var command: EditorWrapCommand?
+    @Binding var selectedText: String
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -434,19 +681,33 @@ private struct MarkdownEditor: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, selectedText: $selectedText)
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding private var text: String
+        @Binding private var selectedText: String
         var lastCommandID: UUID?
 
-        init(text: Binding<String>) {
+        init(text: Binding<String>, selectedText: Binding<String>) {
             _text = text
+            _selectedText = selectedText
         }
 
         func textViewDidChange(_ textView: UITextView) {
             text = textView.text
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            let source = textView.text as NSString
+            let range = textView.selectedRange
+            guard range.location != NSNotFound,
+                  range.length > 0,
+                  range.location + range.length <= source.length else {
+                selectedText = ""
+                return
+            }
+            selectedText = source.substring(with: range)
         }
     }
 }
@@ -471,31 +732,52 @@ private struct RelationStrip: View {
     var title: String
     var nodes: [CBrainNode]
     var relation: RelationKind
-    var onSelect: (CBrainNode) -> Void
+    var previewedNodeId: String?
+    var onTap: (CBrainNode) -> Void
+    var onOpen: (CBrainNode) -> Void
     var onDelete: (CBrainNode, RelationKind) -> Void
 
     var body: some View {
-        if !nodes.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if nodes.isEmpty {
+                        Text("None")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 54, alignment: .leading)
+                    } else {
                         ForEach(nodes) { node in
                             Button {
-                                onSelect(node)
+                                onTap(node)
                             } label: {
                                 Text(node.topic)
                                     .lineLimit(1)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .overlay {
+                                if node.id == previewedNodeId {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                                        .foregroundStyle(Color.primary)
+                                }
+                            }
                             .contextMenu {
-                                Button(role: .destructive) {
-                                    onDelete(node, relation)
+                                Button {
+                                    onOpen(node)
                                 } label: {
-                                    Label("删除关系", systemImage: "trash")
+                                    Label("打开", systemImage: "arrow.up.forward")
+                                }
+                                if relation != .sibling {
+                                    Button(role: .destructive) {
+                                        onDelete(node, relation)
+                                    } label: {
+                                        Label("移除连接", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -506,35 +788,100 @@ private struct RelationStrip: View {
     }
 }
 
-private struct ExistingLinkPicker: View {
+private struct RelationAddPicker: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: CBrainViewModel
     var action: ExistingLinkAction
     var onSelect: (CBrainNode) -> Void
+    var onCreate: (String) -> Void
     @State private var query = ""
 
     private var candidates: [CBrainNode] {
-        let currentId = model.selectedNode?.id
+        let currentId = model.graphNode?.id
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.nodes.filter { node in
+        return Array(model.nodes.filter { node in
             node.id != currentId && (trimmed.isEmpty || node.topic.localizedCaseInsensitiveContains(trimmed))
-        }
+        }.prefix(80))
+    }
+
+    private var titleForCreate: String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "未命名" : trimmed
     }
 
     var body: some View {
-        List(candidates) { node in
-            Button {
-                onSelect(node)
-            } label: {
-                Text(node.topic)
-                    .lineLimit(1)
+        VStack(spacing: 0) {
+            TextField("搜索已有节点或输入新标题", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .padding()
+
+            List {
+                Section("已有节点") {
+                    if candidates.isEmpty {
+                        Text("没有匹配节点")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(candidates) { node in
+                            Button {
+                                onSelect(node)
+                            } label: {
+                                Text(node.topic)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
             }
         }
-        .searchable(text: $query, prompt: "搜索已有节点")
-        .navigationTitle(action.title)
+        .navigationTitle("添加关系")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") {
+                    dismiss()
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("新建") {
+                    onCreate(titleForCreate)
+                }
+            }
+        }
+    }
+}
+
+private struct SearchResultsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var model: CBrainViewModel
+    var onOpen: (CBrainSearchResult) -> Void
+
+    var body: some View {
+        List {
+            if model.searchResults.isEmpty {
+                Text("没有结果")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.searchResults) { result in
+                    Button {
+                        onOpen(result)
+                        dismiss()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text((result.kind == "whiteboard" ? "[白板] " : "[笔记] ") + result.title)
+                                .lineLimit(1)
+                            Text(result.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+        .searchable(text: $model.searchQuery, prompt: "搜索标题、正文或白板文字")
+        .navigationTitle("搜索")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("关闭") {
                     dismiss()
                 }
             }
@@ -653,11 +1000,11 @@ extension ExistingLinkAction: Identifiable {
     var title: String {
         switch self {
         case .parent:
-            return "链接已有父节点"
+            return "添加父节点"
         case .child:
-            return "链接已有子节点"
+            return "添加子节点"
         case .related:
-            return "链接已有相关节点"
+            return "添加相关节点"
         }
     }
 }
