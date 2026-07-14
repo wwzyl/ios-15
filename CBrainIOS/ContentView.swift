@@ -1,6 +1,39 @@
 import SwiftUI
 import UIKit
 
+struct CompatibleNavigationContainer<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            NavigationStack {
+                content
+            }
+        } else {
+            NavigationView {
+                content
+            }
+            .navigationViewStyle(StackNavigationViewStyle())
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func cbrainScrollContentBackgroundHidden() -> some View {
+        if #available(iOS 16.0, *) {
+            scrollContentBackground(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
 struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var model: CBrainViewModel
@@ -15,94 +48,13 @@ struct ContentView: View {
     @State private var editorCommand: EditorWrapCommand?
     @State private var showingFullEditor = false
     @State private var fullEditorCommand: EditorWrapCommand?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var sidebarVisible = false
     @State private var whiteboardStart: WhiteboardStart?
     @State private var selectedNoteText = ""
     @State private var showingSearchSheet = false
 
     var body: some View {
-        Group {
-            if horizontalSizeClass == .compact {
-                NavigationStack {
-                    compactDetail
-                }
-            } else {
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-                .navigationTitle("CBrain")
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarLeading) {
-                        Button {
-                            model.openHistory(-1)
-                            closeSidebar()
-                        } label: {
-                            Label("上", systemImage: "chevron.left")
-                        }
-
-                        Button {
-                            model.openHistory(1)
-                            closeSidebar()
-                        } label: {
-                            Label("下", systemImage: "chevron.right")
-                        }
-                    }
-
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Button {
-                            showingFolderPicker = true
-                        } label: {
-                            Label("导入", systemImage: "folder.badge.plus")
-                        }
-                    }
-                }
-        } detail: {
-            detail
-                .navigationTitle(model.selectedNode?.topic ?? "CBrain")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarLeading) {
-                        Button {
-                            toggleSidebar()
-                        } label: {
-                            Label("资料库", systemImage: "sidebar.left")
-                        }
-
-                        Button {
-                            model.homeNode()
-                        } label: {
-                            Label("主页", systemImage: "house")
-                        }
-                    }
-
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Menu {
-                            Button {
-                                begin(.rename)
-                            } label: {
-                                Label("改名", systemImage: "pencil")
-                            }
-                            Button(role: .destructive) {
-                                confirmDelete = true
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                        } label: {
-                            Label("更多", systemImage: "ellipsis.circle")
-                        }
-                        .disabled(model.selectedNode == nil)
-
-                        Button {
-                            showingS3Settings = true
-                        } label: {
-                            Label("同步", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .disabled(model.isSyncing)
-                    }
-                }
-        }
-                .navigationSplitViewStyle(.balanced)
-            }
-        }
+        rootNavigation
         .onAppear {
             preferDetailColumn()
         }
@@ -110,7 +62,7 @@ struct ContentView: View {
             preferDetailColumn()
         }
         .sheet(isPresented: $showingSidebarSheet) {
-            NavigationStack {
+            CompatibleNavigationContainer {
                 sidebar
                     .navigationTitle("CBrain")
                     .toolbar {
@@ -139,12 +91,12 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showingS3Settings) {
-            NavigationStack {
+            CompatibleNavigationContainer {
                 S3SettingsView()
             }
         }
         .sheet(item: $addRelationAction) { action in
-            NavigationStack {
+            CompatibleNavigationContainer {
                 RelationAddPicker(action: action) { node in
                     addRelationAction = nil
                     model.linkExisting(node, as: action)
@@ -163,14 +115,14 @@ struct ContentView: View {
             }
         }
         .fullScreenCover(item: $whiteboardStart) { start in
-            NavigationStack {
+            CompatibleNavigationContainer {
                 WhiteboardView(start: start)
                     .environmentObject(model)
             }
             .interactiveDismissDisabled(true)
         }
         .sheet(isPresented: $showingSearchSheet) {
-            NavigationStack {
+            CompatibleNavigationContainer {
                 SearchResultsSheet { result in
                     openSearchResult(result)
                 }
@@ -201,7 +153,7 @@ struct ContentView: View {
             Text(model.errorMessage ?? "")
         }
         .fullScreenCover(isPresented: $showingFullEditor) {
-            NavigationStack {
+            CompatibleNavigationContainer {
                 MarkdownEditor(text: $model.noteText, command: fullEditorCommand, selectedText: $selectedNoteText)
                     .padding(12)
                     .navigationTitle(model.selectedNode?.topic ?? "编辑")
@@ -242,6 +194,119 @@ struct ContentView: View {
                     }
             }
         }
+    }
+
+    @ViewBuilder
+    private var rootNavigation: some View {
+        if #available(iOS 16.0, *) {
+            modernNavigation
+        } else {
+            NavigationView {
+                compactDetail
+            }
+            .navigationViewStyle(StackNavigationViewStyle())
+        }
+    }
+
+    @available(iOS 16.0, *)
+    @ViewBuilder
+    private var modernNavigation: some View {
+        if horizontalSizeClass == .compact {
+            NavigationStack {
+                compactDetail
+            }
+        } else {
+            NavigationSplitView(columnVisibility: modernColumnVisibility) {
+                sidebarNavigation
+            } detail: {
+                detailNavigation
+            }
+            .navigationSplitViewStyle(.balanced)
+        }
+    }
+
+    @available(iOS 16.0, *)
+    private var modernColumnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { sidebarVisible ? .all : .detailOnly },
+            set: { sidebarVisible = $0 != .detailOnly }
+        )
+    }
+
+    private var sidebarNavigation: some View {
+        sidebar
+            .navigationTitle("CBrain")
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    Button {
+                        model.openHistory(-1)
+                        closeSidebar()
+                    } label: {
+                        Label("上", systemImage: "chevron.left")
+                    }
+
+                    Button {
+                        model.openHistory(1)
+                        closeSidebar()
+                    } label: {
+                        Label("下", systemImage: "chevron.right")
+                    }
+                }
+
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showingFolderPicker = true
+                    } label: {
+                        Label("导入", systemImage: "folder.badge.plus")
+                    }
+                }
+            }
+    }
+
+    private var detailNavigation: some View {
+        detail
+            .navigationTitle(model.selectedNode?.topic ?? "CBrain")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    Button {
+                        toggleSidebar()
+                    } label: {
+                        Label("资料库", systemImage: "sidebar.left")
+                    }
+
+                    Button {
+                        model.homeNode()
+                    } label: {
+                        Label("主页", systemImage: "house")
+                    }
+                }
+
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            begin(.rename)
+                        } label: {
+                            Label("改名", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            confirmDelete = true
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    } label: {
+                        Label("更多", systemImage: "ellipsis.circle")
+                    }
+                    .disabled(model.selectedNode == nil)
+
+                    Button {
+                        showingS3Settings = true
+                    } label: {
+                        Label("同步", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(model.isSyncing)
+                }
+            }
     }
 
     private var compactDetail: some View {
@@ -296,18 +361,22 @@ struct ContentView: View {
             return
         }
 
-        withAnimation {
-            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        if #available(iOS 16.0, *) {
+            withAnimation {
+                sidebarVisible.toggle()
+            }
+        } else {
+            showingSidebarSheet = true
         }
     }
 
     private func preferDetailColumn() {
-        columnVisibility = .detailOnly
+        sidebarVisible = false
     }
 
     private func closeSidebar() {
         showingSidebarSheet = false
-        columnVisibility = .detailOnly
+        sidebarVisible = false
     }
 
     private func compactButton(_ title: String, _ systemImage: String, action: @escaping () -> Void) -> some View {

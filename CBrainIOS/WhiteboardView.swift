@@ -77,7 +77,7 @@ struct WhiteboardView: View {
             }
         }
         .sheet(isPresented: $searchPresented) {
-            NavigationStack {
+            CompatibleNavigationContainer {
                 WhiteboardSearchView(board: board, repository: start.repository, whiteboards: start.whiteboards) { choice in
                     switch choice {
                     case .node(let node):
@@ -203,7 +203,7 @@ struct WhiteboardView: View {
                 } else {
                     TextEditor(text: $model.noteText)
                         .font(.body)
-                        .scrollContentBackground(.hidden)
+                        .cbrainScrollContentBackgroundHidden()
                         .background(Color(UIColor.systemBackground))
                 }
             }
@@ -824,7 +824,7 @@ private struct WhiteboardTextEditSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        CompatibleNavigationContainer {
             TextEditor(text: $text)
                 .padding()
                 .navigationTitle(request.kind == .connectorLabel ? "连线文字" : "文字")
