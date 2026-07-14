@@ -390,6 +390,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detail: some View {
         if let selected = model.selectedNode {
+            GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 12) {
                 VStack(spacing: 4) {
                     HStack(spacing: 6) {
@@ -459,14 +460,9 @@ struct ContentView: View {
                     RelationStrip(title: "兄弟", nodes: model.siblings, relation: .sibling, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: { _, _ in })
                     RelationStrip(title: "子节点", nodes: model.children, relation: .child, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: model.removeRelation)
                     RelationStrip(title: "相关", nodes: model.related, relation: .related, previewedNodeId: model.selectedNode?.id, onTap: model.graphNodeTapped, onOpen: model.selectGraphNode, onDelete: model.removeRelation)
-                    if !model.whiteboardStatus.isEmpty {
-                        Text(model.whiteboardStatus)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
                 }
                 .padding([.horizontal, .top], 16)
+                .frame(maxHeight: max(120, geometry.size.height * 0.22), alignment: .top)
 
                 HStack(spacing: 8) {
                     Button {
@@ -530,7 +526,8 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: max(260, geometry.size.height * 0.65))
                     .background(Color(.systemBackground))
                     .overlay(alignment: .top) {
                         Divider()
@@ -542,7 +539,8 @@ struct ContentView: View {
                     MarkdownEditor(text: $model.noteText, command: editorCommand, selectedText: $selectedNoteText)
                         .background(Color(.systemBackground))
                         .padding(.horizontal, 12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(260, geometry.size.height * 0.65))
                         .overlay(alignment: .top) {
                             Divider()
                         }
@@ -550,9 +548,20 @@ struct ContentView: View {
                             showingFullEditor = true
                         }
                 }
+                if !model.whiteboardStatus.isEmpty || !model.status.isEmpty {
+                    Text([model.whiteboardStatus, model.status].filter { !$0.isEmpty }.joined(separator: "  "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(Color(.secondarySystemGroupedBackground))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.systemGroupedBackground))
+            }
         } else {
             VStack(spacing: 14) {
                 Image(systemName: "folder")
@@ -806,6 +815,7 @@ private struct RelationAddPicker: View {
     var onSelect: (CBrainNode) -> Void
     var onCreate: (String) -> Void
     @State private var query = ""
+    @FocusState private var queryFocused: Bool
 
     private var candidates: [CBrainNode] {
         let currentId = model.graphNode?.id
@@ -824,6 +834,12 @@ private struct RelationAddPicker: View {
         VStack(spacing: 0) {
             TextField("搜索已有节点或输入新标题", text: $query)
                 .textFieldStyle(.roundedBorder)
+                .focused($queryFocused)
+                .onAppear {
+                    DispatchQueue.main.async {
+                        queryFocused = true
+                    }
+                }
                 .padding()
 
             List {
@@ -864,31 +880,43 @@ private struct SearchResultsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: CBrainViewModel
     var onOpen: (CBrainSearchResult) -> Void
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        List {
-            if model.searchResults.isEmpty {
-                Text("没有结果")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(model.searchResults) { result in
-                    Button {
-                        onOpen(result)
-                        dismiss()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text((result.kind == "whiteboard" ? "[白板] " : "[笔记] ") + result.title)
-                                .lineLimit(1)
-                            Text(result.reason)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+        VStack(spacing: 0) {
+            TextField("搜索标题、正文或白板文字", text: $model.searchQuery)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchFocused)
+                .onAppear {
+                    DispatchQueue.main.async {
+                        searchFocused = true
+                    }
+                }
+                .padding()
+
+            List {
+                if model.searchResults.isEmpty {
+                    Text("没有结果")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.searchResults) { result in
+                        Button {
+                            onOpen(result)
+                            dismiss()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text((result.kind == "whiteboard" ? "[白板] " : "[笔记] ") + result.title)
+                                    .lineLimit(1)
+                                Text(result.reason)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
                 }
             }
         }
-        .searchable(text: $model.searchQuery, prompt: "搜索标题、正文或白板文字")
         .navigationTitle("搜索")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

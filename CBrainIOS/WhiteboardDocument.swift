@@ -315,14 +315,14 @@ final class WhiteboardDocument: ObservableObject {
         let fontSize = textFontSize(element)
         let lines = normalizeText(text).split(separator: "\n", omittingEmptySubsequences: false)
         let widest = lines.map { measureText(String($0), fontSize: fontSize) }.max() ?? 0
-        return min(max(defaultTextWidth, widest + 12), 800)
+        return min(max(30, widest + 4), 800)
     }
 
     func measuredTextHeight(_ element: [String: Any], text: String) -> CGFloat {
         let fontSize = textFontSize(element)
         let ratio = wbCGFloat(wbDict(element["style"])["lineHeightRatio"], defaultValue: 1.15)
         let lineCount = max(1, normalizeText(text).split(separator: "\n", omittingEmptySubsequences: false).count)
-        return max(fontSize + 10, CGFloat(lineCount) * fontSize * ratio + 8)
+        return max(24, CGFloat(lineCount) * fontSize * ratio + 4)
     }
 
     func textFontSize(_ element: [String: Any]) -> CGFloat {
@@ -437,9 +437,10 @@ final class WhiteboardDocument: ObservableObject {
         element["style"] = style
         let raw = rawTextForLayout(element)
         rememberRawText(&element, raw)
-        let wrapped = wrapTextForWidth(raw, fontSize: newFontSize, width: measuredTextWidth(element, text: raw))
+        let width = max(30, measuredTextWidth(element, text: raw))
+        let wrapped = wrapTextForWidth(raw, fontSize: newFontSize, width: width)
         element["text"] = wrapped
-        element["width"] = measuredTextWidth(element, text: wrapped)
+        element["width"] = width
         element["height"] = measuredTextHeight(element, text: wrapped)
     }
 

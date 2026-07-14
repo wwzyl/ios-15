@@ -329,7 +329,7 @@ private struct WhiteboardCanvasView: UIViewRepresentable {
     }
 }
 
-private final class WhiteboardCanvasUIView: UIView {
+private final class WhiteboardCanvasUIView: UIView, UIGestureRecognizerDelegate {
     weak var board: WhiteboardDocument?
     var onEditText: ((WhiteboardEditRequest) -> Void)?
     var onSelectNode: ((String) -> Void)?
@@ -354,7 +354,13 @@ private final class WhiteboardCanvasUIView: UIView {
         backgroundColor = .systemBackground
         isMultipleTouchEnabled = true
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
         addGestureRecognizer(pinch)
+        let twoFingerPan = UIPanGestureRecognizer(target: self, action: #selector(handleTwoFingerPan(_:)))
+        twoFingerPan.minimumNumberOfTouches = 2
+        twoFingerPan.maximumNumberOfTouches = 2
+        twoFingerPan.delegate = self
+        addGestureRecognizer(twoFingerPan)
         let long = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         long.minimumPressDuration = 0.85
         addGestureRecognizer(long)
@@ -384,6 +390,14 @@ private final class WhiteboardCanvasUIView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if (event?.allTouches?.count ?? touches.count) >= 2 {
+            marquee = false
+            dragging = false
+            resizing = false
+            endpointDrag = false
+            drawingId = ""
+            return
+        }
         guard let touch = touches.first, let board else { return }
         let screen = touch.location(in: self)
         let world = board.screenToWorld(screen)
@@ -472,6 +486,9 @@ private final class WhiteboardCanvasUIView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if (event?.allTouches?.count ?? touches.count) >= 2 {
+            return
+        }
         guard let touch = touches.first, let board else { return }
         let screen = touch.location(in: self)
         let world = board.screenToWorld(screen)
@@ -542,6 +559,23 @@ private final class WhiteboardCanvasUIView: UIView {
         board.pan.x += location.x - after.x
         board.pan.y += location.y - after.y
         setNeedsDisplay()
+    }
+
+    @objc private func handleTwoFingerPan(_ gesture: UIPanGestureRecognizer) {
+        guard let board else { return }
+        let translation = gesture.translation(in: self)
+        board.pan.x += translation.x
+        board.pan.y += translation.y
+        gesture.setTranslation(.zero, in: self)
+        marquee = false
+        dragging = false
+        resizing = false
+        endpointDrag = false
+        setNeedsDisplay()
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
     }
 
     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
@@ -661,8 +695,9 @@ private final class WhiteboardCanvasUIView: UIView {
         let style = wbDict(element["style"])
         let rect = board.bounds(element)
         context.setLineWidth(board.lineWidth(style))
-        UIColor(hex: wbString(style["strokeStyle"], defaultValue: "#000000")).setStroke()
-        let fill = wbString(style["fillStyle"], defaultValue: "transparent")
+        let isImportedNode = !wbString(element["nodeId"]).isEmpty
+        UIColor(hex: isImportedNode ? "#409EFF" : wbString(style["strokeStyle"], defaultValue: "#000000")).setStroke()
+        let fill = isImportedNode ? "#FFFFFF" : wbString(style["fillStyle"], defaultValue: "transparent")
         if fill != "transparent" {
             UIColor(hex: fill).setFill()
             context.fill(rect)
@@ -714,24 +749,42 @@ private final class WhiteboardCanvasUIView: UIView {
         let rect = board.bounds(element)
         let text = wbString(element["text"])
         let fontSize = board.textFontSize(element)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = wbString(style["textAlign"]) == "center" ? .center : .left
-        let color = UIColor(hex: wbString(style["fillStyle"], defaultValue: "#000000"))
+        let color = UIColor(hex: !wbString(element["nodeId"]).isEmpty ? "#222222" : wbString(style["fillStyle"], defaultValue: "#000000"))
         let attributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: fontSize),
-            .foregroundColor: color,
-            .paragraphStyle: paragraph
+            .foregroundColor: color
         ]
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        let lineHeight = fontSize * wbCGFloat(style["lineHeightRatio"], defaultValue: 1.15)
+        let blockHeight = CGFloat(max(1, lines.count)) * lineHeight
+        var textY = rect.minY
+        if wbString(style["verticalAlign"]) == "middle" {
+            textY = rect.minY + max(0, (rect.height - blockHeight) / 2)
+        }
         context.saveGState()
         let angle = wbCGFloat(element["rotate"]) * .pi / 180
         if angle != 0 {
             context.translateBy(x: rect.midX, y: rect.midY)
             context.rotate(by: angle)
-            (text as NSString).draw(with: CGRect(x: -rect.width / 2, y: -rect.height / 2, width: rect.width, height: rect.height), options: [.usesLineFragmentOrigin], attributes: attributes, context: nil)
-        } else {
-            (text as NSString).draw(with: rect.insetBy(dx: 4, dy: 4), options: [.usesLineFragmentOrigin], attributes: attributes, context: nil)
+            textY = -rect.height / 2 + (textY - rect.minY)
+            drawTextLines(lines, in: CGRect(x: -rect.width / 2, y: -rect.height / 2, width: rect.width, height: rect.height), startY: textY, lineHeight: lineHeight, alignCenter: wbString(style["textAlign"]) == "center", attributes: attributes)
+            context.restoreGState()
+            return
         }
+        drawTextLines(lines, in: rect, startY: textY, lineHeight: lineHeight, alignCenter: wbString(style["textAlign"]) == "center", attributes: attributes)
         context.restoreGState()
+    }
+
+    private func drawTextLines(_ lines: [String], in rect: CGRect, startY: CGFloat, lineHeight: CGFloat, alignCenter: Bool, attributes: [NSAttributedString.Key: Any]) {
+        for (index, line) in lines.enumerated() {
+            let nsLine = line as NSString
+            let width = nsLine.size(withAttributes: attributes).width
+            let x = alignCenter ? rect.minX + max(0, (rect.width - width) / 2) : rect.minX
+            nsLine.draw(at: CGPoint(x: x, y: startY + CGFloat(index) * lineHeight), withAttributes: attributes)
+        }
     }
 
     private func drawSelection(context: CGContext, board: WhiteboardDocument) {
@@ -796,37 +849,49 @@ private struct WhiteboardSearchView: View {
     let whiteboards: WhiteboardRepository
     var onSelect: (WhiteboardSearchChoice) -> Void
     @State private var query = ""
+    @FocusState private var queryFocused: Bool
 
     var body: some View {
-        List {
-            Section("笔记") {
-                ForEach(noteMatches) { node in
-                    Button {
-                        onSelect(.node(node))
-                    } label: {
-                        Text(node.topic)
-                            .lineLimit(1)
+        VStack(spacing: 0) {
+            TextField("搜索标题或白板文字", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .focused($queryFocused)
+                .onAppear {
+                    DispatchQueue.main.async {
+                        queryFocused = true
                     }
                 }
-            }
-            Section("白板文字") {
-                ForEach(canvasMatches, id: \.id) { item in
-                    Button {
-                        onSelect(.canvasText(item.drawing, item.elementId, item.index))
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
+                .padding()
+
+            List {
+                Section("笔记") {
+                    ForEach(noteMatches) { node in
+                        Button {
+                            onSelect(.node(node))
+                        } label: {
+                            Text(node.topic)
                                 .lineLimit(1)
-                            Text(item.preview)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                        }
+                    }
+                }
+                Section("白板文字") {
+                    ForEach(canvasMatches, id: \.id) { item in
+                        Button {
+                            onSelect(.canvasText(item.drawing, item.elementId, item.index))
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.title)
+                                    .lineLimit(1)
+                                Text(item.preview)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
                 }
             }
         }
-        .searchable(text: $query, prompt: "搜索标题或白板文字")
         .navigationTitle("搜索")
     }
 
